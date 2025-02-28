@@ -1,56 +1,189 @@
 import streamlit as st
-from openai import OpenAI
+import requests
+import json
+import os
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+LANGFLOW_URL = os.getenv('LANGFLOW_URL')
+ASTRA_DB_TOKEN = os.getenv('ASTRA_DB_TOKEN')
+
+# Set page configuration with light theme
+st.set_page_config(
+    page_title="GloomBOT",
+    page_icon="🥸",
+    layout="wide",
+    initial_sidebar_state="auto"
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+# Apply custom CSS for light theme
+st.markdown("""
+    <style>
+        /* Main app background */
+        .stApp {
+            background-color: #FFFFFF !important;
+        }
+        
+        /* Chat container */
+        .stChatFloatingInputContainer {
+            background-color: #FFFFFF !important;
+        }
+        
+        /* Chat messages background */
+        .stChatMessage {
+            background-color: #F8F9FA !important;
+            border: 1px solid #E6E6E6;
+            border-radius: 10px;
+            padding: 10px;
+            margin: 5px 0;
+        }
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+        /* Target using partial class names */
+        div[class*="ea3mdgi6"],
+        div[class*="ea3mdgi2"],
+        div[class*="message-container"] {
+            background-color: #37b366 !important;
+        }
+            
+        /* Force background color for user messages using multiple selectors */
+        div[class*="stChatMessage"][class*="user"],
+        div[class*="message"][class*="user"],
+        div[data-test="user-message"],
+        .st-emotion-cache-*[data-test="user-message"] {
+            background-color: #37b366 !important;
+            color: white !important;
+        }
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+        /* Try targeting with attribute contains */
+        div[class*="emotion"][data-test="user-message"],
+        div[class*="chat"][data-test="user-message"] {
+            background-color: #37b366 !important;
+        }
+        
+        /* User message specific styling */
+        .stChatMessage[data-test="user-message"] {
+            background-color: #E3F2FD !important;
+        }
+        
+        /* Assistant message specific styling */
+        .stChatMessage[data-test="assistant-message"] {
+            background-color: #FFFFFF !important;
+        }
+        
+        /* Input box */
+        .stChatInputContainer {
+            background-color: #FFFFFF !important;
+            border-color: #E6E6E6 !important;
+        }
+        
+        /* Text color */
+        .stMarkdown {
+            color: #2C3E50 !important;
+        }
+        
+        /* Links */
+        a {
+            color: #1E88E5 !important;
+            text-decoration: none;
+        }
+        
+        /* Title */
+        .stTitle {
+            color: #2C3E50 !important;
+        }
+        
+        /* Center image */
+        div[data-testid="stImage"] {
+            display: flex;
+            justify-content: center;
+        }
+        
+        /* Input area */
+        textarea {
+            background-color: #FFFFFF !important;
+            color: #2C3E50 !important;
+        }
+        
+        /* Chat container background */
+        section[data-testid="stChatMessageContainer"] {
+            background-color: #FFFFFF !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+st.image("https://uploads.comparajogos.com.br/img/02dcf4c46c1fd40b456396c910a5e50798b126c2.jpg", width=200)
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+st.write(
+    "Seja bem vindo ao GloomBOT",
+)
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+def get_langflow_response(messages):
+    try:
+        payload = {
+            "input_value": messages[-1]["content"] if messages else "",
+            "output_type": "chat",
+            "input_type": "chat",
+            "tweaks": {
+                "ChatInput-aIFQn": {},
+                "ParseData-phjlM": {},
+                "Prompt-1E3j8": {},
+                "SplitText-OL2ii": {},
+                "ChatOutput-fYxQ9": {},
+                "OpenAIEmbeddings-rzlEi": {},
+                "OpenAIEmbeddings-d2jxq": {},
+                "AstraDB-fkkT8": {},
+                "AstraDB-1FrF7": {},
+                "Agent-tPbjm": {},
+                "Directory-3XGz5": {}
+            }
+        }
+        
+        response = requests.post(
+            LANGFLOW_URL,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {ASTRA_DB_TOKEN}"
+            }
         )
+        
+        response.raise_for_status()
+        response_data = response.json()
+        
+        return response_data["outputs"][0]["outputs"][0]["results"]["message"]["data"]["text"]
+    
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error making request to Langflow: {str(e)}")
+        return None
+    except (KeyError, IndexError) as e:
+        st.error(f"Error parsing Langflow response: {str(e)}")
+        return None
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+# Add a light separator
+st.markdown("---")
+
+# Display existing chat messages
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# Chat input
+if prompt := st.chat_input("Como posso ajudá-lo?"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Pensando..."):
+            response = get_langflow_response(st.session_state.messages)
+            
+            if response:
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
